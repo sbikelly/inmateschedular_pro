@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "931168504257",
+    "project_id": "inmate-schedular",
+    "storage_bucket": "inmate-schedular.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:931168504257:android:738675cc6066d8fd3e8740",
+        "android_client_info": {
+          "package_name": "com.inmateschedular.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIfNbGrhaJd_0v1EyTb0H5pWRVqfH-kEg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
