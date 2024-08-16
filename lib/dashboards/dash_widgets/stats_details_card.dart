@@ -3,7 +3,7 @@ import 'package:inmateschedular_pro/dashboards/dash_widgets/card.dart';
 import 'package:inmateschedular_pro/dashboards/dash_widgets/dash_models.dart';
 import 'package:inmateschedular_pro/dashboards/dash_widgets/my_widgets.dart';
 import 'package:inmateschedular_pro/services/user_service.dart';
-import 'package:inmateschedular_pro/util/Responsive.dart';
+import 'package:inmateschedular_pro/util/responsive.dart';
 
 class StatsDetailsCards extends StatelessWidget {
   StatsDetailsCards({super.key});

@@ -1,11 +1,11 @@
-import 'dart:io';
-
 import 'package:csc_picker/csc_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:inmateschedular_pro/services/inmate_services.dart';
+import 'package:inmateschedular_pro/services/firestore_service.dart';
 import 'package:inmateschedular_pro/services/user_model.dart';
+import 'package:inmateschedular_pro/util/toast.dart';
+import 'package:inmateschedular_pro/util/util_functions.dart';
+import 'package:intl/intl.dart';
 
 class InmateDialog extends StatefulWidget {
   final InmateModel? inmate;
@@ -18,6 +18,9 @@ class InmateDialog extends StatefulWidget {
 }
 
 class _InmateDialogState extends State<InmateDialog> {
+
+  
+  late FirestoreService<UserModel> _userService; // Use the generic service
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _inmateIDController;
   late TextEditingController _firstNameController;
@@ -26,14 +29,14 @@ class _InmateDialogState extends State<InmateDialog> {
   late TextEditingController _phoneController;
   late TextEditingController _cellNoController;
   late TextEditingController _dobController;
-  File? _photo;
+  String? _photo;
   String? _gender;
   String? _selectedCountry;
   String? _selectedState;
   String? _selectedLga;
   late final String? _type = widget.dialogType;
 
-  InmateService inmateService = InmateService();
+  //InmateService inmateService = InmateService();
 
   @override
   void initState() {
@@ -67,14 +70,12 @@ class _InmateDialogState extends State<InmateDialog> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    File? photo = await inmateService.pickImage();
-    if (photo != null) {
-      setState(() {
-        _photo = photo;
-      });
-    }
-  }
+  final FirestoreService<InmateModel> inmateService = FirestoreService<InmateModel>(
+    collectionName: 'inmates',
+    fromSnapshot: (snapshot) => InmateModel.fromSnapshot(snapshot),
+    toJson: (model) => model.toJson(),
+  );
+  
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -106,7 +107,7 @@ class _InmateDialogState extends State<InmateDialog> {
       );
 
       try {
-        await inmateService.addInmate(newInmate);
+        await inmateService.add(newInmate);
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Inmate created successfully')),
@@ -125,7 +126,7 @@ class _InmateDialogState extends State<InmateDialog> {
 
   void _updateInmate() async {
     if (_formKey.currentState!.validate()) {
-      InmateModel newInmate = InmateModel(
+      InmateModel updatedInmate = InmateModel(
         id: widget.inmate?.id,
         inmateID: _inmateIDController.text,
         firstName: _firstNameController.text,
@@ -140,8 +141,8 @@ class _InmateDialogState extends State<InmateDialog> {
       );
 
       try {
-        if (widget.inmate != null) {
-          await inmateService.updateInmate(newInmate, _photo);
+        if (widget.inmate != null && widget.inmate!.id != null) {
+          await inmateService.update(widget.inmate!.id!, updatedInmate);
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Inmate updated successfully')),
@@ -164,23 +165,30 @@ class _InmateDialogState extends State<InmateDialog> {
     }
   }
 
-  void _deleteInmate() async {
-    try {
-      await inmateService.deleteInmate(widget.inmate!.id!);
+void _deleteInmate() async {
+  try {
+    if (widget.inmate != null && widget.inmate!.id != null) {
+      await inmateService.delete(widget.inmate!.id!);
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Inmate deleted successfully')),
       );
-    } on Exception catch (e) {
+    } else {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error deleting Inmate')),
+        const SnackBar(content: Text('Error deleting Inmate. Inmate id not found')),
       );
-      if (kDebugMode) {
-        print('Error deleting Inmate: $e');
-      }
+    }
+  } on Exception catch (e) {
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Error deleting Inmate')),
+    );
+    if (kDebugMode) {
+      print('Error deleting Inmate: $e');
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -198,18 +206,47 @@ class _InmateDialogState extends State<InmateDialog> {
               children: [
                 _type == 'update'
                     ? const SizedBox.shrink()
-                    : GestureDetector(
-                        onTap: _pickImage,
-                        child: CircleAvatar(
-                          radius: 50,
-                          backgroundImage: _photo != null
-                              ? FileImage(_photo!)
-                              : (widget.inmate?.photo != null
-                                  ? NetworkImage(widget.inmate!.photo!)
-                                  : const AssetImage('images/avatar.png'))
-                                  as ImageProvider,
-                        ),
+                      : GestureDetector(
+                    onTap: () async {
+                    try {
+                      await Utils.selectPhoto((selectedPhotoUrl) {
+                        if (selectedPhotoUrl != null) {
+                          setState(() {
+                            _photo = selectedPhotoUrl;
+                          });
+                        } else {
+                          showToast(message: 'Failed to select photo or file size exceeds limit of 1048487 ', err: true);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('file size exceeds limit')),
+                          );
+                        }
+                      });
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('An error occurred while selecting the photo')),
+                      );
+                    }
+                  },
+                  child: Container(
+                    width: 150.0, // Width of the container
+                    height: 150.0, // Height of the container
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white, // Border color
+                        width: 5.0, // Border width
                       ),
+                    ),
+                    child: CircleAvatar(
+                      radius: 75,
+                      backgroundImage: _photo == null
+                          ? const AssetImage('images/avatar.png') as ImageProvider
+                          : NetworkImage(_photo!) as ImageProvider,
+                      child: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
+                    ),
+                  ),
+                ),
+              
                 const SizedBox(
                   height: 15,
                 ),
@@ -258,19 +295,6 @@ class _InmateDialogState extends State<InmateDialog> {
                   },
                   decoration: const InputDecoration(labelText: 'Select Gender'),
                   icon: Icon(Icons.person),
-                  /*
-                  decoration: BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(10)),
-                      color: Colors.white,
-                      border:
-                      Border.all(color: Colors.grey.shade400, width: 2)),
-                      
-                  disabledDropdownDecoration: BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(10)),
-                      color: Colors.grey.shade300,
-                      border:
-                      Border.all(color: Colors.grey.shade300, width: 2)),
-                      */
 
                 ),
                 TextFormField(

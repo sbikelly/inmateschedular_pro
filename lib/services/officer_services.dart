@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:inmateschedular_pro/services/user_model.dart';
 import 'package:universal_io/io.dart';
 
-class OfficerService {  
+class OfficerService {
 
   final CollectionReference _officersCollection = FirebaseFirestore.instance.collection('officers');
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -22,9 +22,7 @@ class OfficerService {
         return [];
       }
 
-      return querySnapshot.docs
-          .map((doc) => OfficerModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-          .toList();
+      return querySnapshot.docs.map((doc) => OfficerModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>)).toList();
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching officers: $e');

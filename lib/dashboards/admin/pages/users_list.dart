@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:inmateschedular_pro/dashboards/dash_widgets/my_widgets.dart';
 import 'package:inmateschedular_pro/dashboards/dash_widgets/users_dialog.dart';
 import 'package:inmateschedular_pro/services/auth_service.dart';
+import 'package:inmateschedular_pro/services/firestore_service.dart'; // Import the generic service
 import 'package:inmateschedular_pro/services/user_model.dart';
-import 'package:inmateschedular_pro/services/user_service.dart';
 import 'package:inmateschedular_pro/util/responsive.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +12,7 @@ class UsersList extends StatefulWidget {
   final String userId;
   final bool isSidebarCollapsed;
   final VoidCallback onToggleSidebar;
+
   const UsersList({
     super.key,
     required this.userId,
@@ -24,7 +25,7 @@ class UsersList extends StatefulWidget {
 }
 
 class _UsersListState extends State<UsersList> {
-  late UserService _userService;
+  late FirestoreService<UserModel> _userService; // Use the generic service
   late AuthService _authService;
   Future<List<UserModel>>? _userListFuture;
   List<UserModel>? _users;
@@ -36,14 +37,18 @@ class _UsersListState extends State<UsersList> {
   @override
   void initState() {
     super.initState();
-    _userService = Provider.of<UserService>(context, listen: false);
+    _userService = FirestoreService<UserModel>(
+      collectionName: 'users',
+      fromSnapshot: (snapshot) => UserModel.fromSnapshot(snapshot),
+      toJson: (user) => user.toJson(),
+    );
     _authService = Provider.of<AuthService>(context, listen: false);
     _fetchUsers();
     _searchController.addListener(_filterUsers);
   }
 
   Future<void> _fetchUsers() async {
-    _userListFuture = _userService.getAllUsers();
+    _userListFuture = _userService.getAll().first;
     _userListFuture!.then((users) {
       setState(() {
         _users = users;
@@ -59,8 +64,8 @@ class _UsersListState extends State<UsersList> {
     setState(() {
       _filteredUsers = _users?.where((user) {
         return user.firstName!.toLowerCase().contains(searchTerm) ||
-               user.otherNames!.toLowerCase().contains(searchTerm) ||
-               user.email!.toLowerCase().contains(searchTerm);
+            user.otherNames!.toLowerCase().contains(searchTerm) ||
+            user.email!.toLowerCase().contains(searchTerm);
       }).toList();
     });
   }
@@ -75,22 +80,21 @@ class _UsersListState extends State<UsersList> {
             showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (context) => LoadingDialog(msg: user == null ? 'Adding User': 'Updating User'),
+              builder: (context) => LoadingDialog(msg: user == null ? 'Adding User' : 'Updating User'),
             );
             if (user == null) {
               User? newUser = await _authService.signUp(updatedUser.email!, '123456');
-              if(newUser !=null){
+              if (newUser != null) {
                 updatedUser.id = newUser.uid;
-                await _userService.addUser(updatedUser);
+                await _userService.add(updatedUser);
               }
-              
             } else {
-              await _userService.updateUser(updatedUser);
+              await _userService.update(updatedUser.id!, updatedUser);
             }
             _fetchUsers();
             Navigator.of(context).pop();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text( user == null ? 'User Added Successfully': 'User Updated Successfully')),
+              SnackBar(content: Text(user == null ? 'User Added Successfully' : 'User Updated Successfully')),
             );
           },
         );
@@ -105,7 +109,7 @@ class _UsersListState extends State<UsersList> {
       builder: (context) => const LoadingDialog(msg: 'Deleting User'),
     );
     try {
-      await _userService.deleteUser(user.id!);
+      await _userService.delete(user.id!);
       await _authService.deleteUser(user.email!);
       _fetchUsers();
       Navigator.of(context).pop();
@@ -196,10 +200,9 @@ class _UsersListState extends State<UsersList> {
         ),
       ],
     );
-  
   }
-  
-  Widget _buildSearchBar(){
+
+  Widget _buildSearchBar() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -219,9 +222,8 @@ class _UsersListState extends State<UsersList> {
         ),
       ],
     );
-                      
   }
-  
+
   Widget _buildDataTable() {
     return FutureBuilder<List<UserModel>>(
         future: _userListFuture,
@@ -243,16 +245,50 @@ class _UsersListState extends State<UsersList> {
                     child: PaginatedDataTable(
                       header: _buildSearchBar(),
                       columns: const [
-                        DataColumn(label: Text('S/N', style: TextStyle(fontWeight: FontWeight.bold),)),
-                        DataColumn(label: Text('First Name', style: TextStyle(fontWeight: FontWeight.bold),)),
-                        DataColumn(label: Text('Other Names', style: TextStyle(fontWeight: FontWeight.bold),)),
-                        DataColumn(label: Text('Email', style: TextStyle(fontWeight: FontWeight.bold),)),
-                        DataColumn(label: Text('Phone', style: TextStyle(fontWeight: FontWeight.bold),)),
-                        DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold),)),
+                        DataColumn(
+                          label: Text(
+                            'S/N',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'First Name',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'Other Names',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'Email',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'Phone',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'Actions',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ],
                       source: UserDataTableSource(_filteredUsers!, _openUserFormDialog, _deleteUser),
                       rowsPerPage: _rowsPerPage,
-                      availableRowsPerPage: [_rowsPerPageOptions, _rowsPerPageOptions * 2, _rowsPerPageOptions * 3],
+                      availableRowsPerPage: [
+                        _rowsPerPageOptions,
+                        _rowsPerPageOptions * 2,
+                        _rowsPerPageOptions * 3
+                      ],
                       onRowsPerPageChanged: (rowsPerPage) {
                         setState(() {
                           _rowsPerPage = rowsPerPage ?? _rowsPerPageOptions;
@@ -266,7 +302,6 @@ class _UsersListState extends State<UsersList> {
           }
         });
   }
-
 }
 
 class UserDataTableSource extends DataTableSource {
@@ -278,19 +313,15 @@ class UserDataTableSource extends DataTableSource {
 
   @override
   DataRow? getRow(int index) {
-    assert(index >= 0);
-    if (index >= users.length) {
-      return null;
-    }
+    if (index >= users.length) return null;
     final UserModel user = users[index];
-    return DataRow.byIndex(
-      index: index,
+    return DataRow(
       cells: [
         DataCell(Text('${index + 1}')),
-        DataCell(Text(user.firstName!)),
-        DataCell(Text(user.otherNames!)),
-        DataCell(Text(user.email!)),
-        DataCell(Text(user.phone!)),
+        DataCell(Text(user.firstName ?? '')),
+        DataCell(Text(user.otherNames ?? '')),
+        DataCell(Text(user.email ?? '')),
+        DataCell(Text(user.phone ?? '')),
         DataCell(
           Row(
             children: [
@@ -311,11 +342,8 @@ class UserDataTableSource extends DataTableSource {
 
   @override
   int get rowCount => users.length;
-
   @override
   bool get isRowCountApproximate => false;
-
   @override
   int get selectedRowCount => 0;
 }
-

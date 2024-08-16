@@ -1,10 +1,11 @@
 import 'package:csc_picker/csc_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:inmateschedular_pro/services/officer_services.dart';
+import 'package:inmateschedular_pro/services/firestore_service.dart';
 import 'package:inmateschedular_pro/services/user_model.dart';
-import 'package:universal_io/io.dart';
+import 'package:inmateschedular_pro/util/toast.dart';
+import 'package:inmateschedular_pro/util/util_functions.dart';
+import 'package:intl/intl.dart';
 
 class OfficerDialog extends StatefulWidget {
   final OfficerModel? officer;
@@ -17,7 +18,6 @@ class OfficerDialog extends StatefulWidget {
 }
 
 class _OfficerDialogState extends State<OfficerDialog> {
-
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _officerIDController;
   late TextEditingController _nameController;
@@ -25,15 +25,19 @@ class _OfficerDialogState extends State<OfficerDialog> {
   late TextEditingController _rankController;
   late TextEditingController _emailController;
   late TextEditingController _phoneController;
-  File? _photoUrl;
+  String? _photoUrl;
   String? _gender;
   String? _selectedCountry;
   String? _selectedState;
   String? _selectedLga;
   late final String _type = widget.dialogType;
 
-  OfficerService officerService = OfficerService();
-
+  final FirestoreService<OfficerModel> officerService = FirestoreService<OfficerModel>(
+    collectionName: 'officers',
+    fromSnapshot: (snapshot) => OfficerModel.fromSnapshot(snapshot),
+    toJson: (model) => model.toJson(),
+  );
+  
   @override
   void initState() {
     super.initState();
@@ -60,18 +64,6 @@ class _OfficerDialogState extends State<OfficerDialog> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    File? photo = await officerService.pickImage();
-    if (photo != null) {
-      if (kDebugMode) {
-        print('photo string = ${photo.toString()}');
-      }
-      setState(() {
-       _photoUrl = photo;
-      });
-    }
-  }
-  
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -100,10 +92,11 @@ class _OfficerDialogState extends State<OfficerDialog> {
         lga: _selectedLga!,
         email: _emailController.text,
         phone: _phoneController.text,
+        photo: _photoUrl != null ? _photoUrl.toString() : null,
       );
 
       try {
-        await officerService.addOfficer(newOfficer, _photoUrl);
+        await officerService.add(newOfficer);
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Officer created successfully')),
@@ -134,12 +127,12 @@ class _OfficerDialogState extends State<OfficerDialog> {
         lga: _selectedLga!,
         email: _emailController.text,
         phone: _phoneController.text,
+        photo: _photoUrl != null ? _photoUrl.toString() : widget.officer?.photo,
       );
-      print(_rankController.text);
 
       try {
         if (widget.officer != null) {
-          await officerService.updateOfficer(updatedOfficer, _photoUrl);
+          await officerService.update(widget.officer!.id!, updatedOfficer);
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Officer updated successfully')),
@@ -147,7 +140,7 @@ class _OfficerDialogState extends State<OfficerDialog> {
         } else {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error updating officer. Officer id not found')),
+            const SnackBar(content: Text('Error updating officer. Officer ID not found')),
           );
         }
       } catch (e) {
@@ -164,7 +157,7 @@ class _OfficerDialogState extends State<OfficerDialog> {
 
   void _deleteOfficer() async {
     try {
-      await officerService.deleteOfficer(widget.officer!.id!);
+      await officerService.delete(widget.officer!.id!);
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Officer deleted successfully')),
@@ -195,18 +188,45 @@ class _OfficerDialogState extends State<OfficerDialog> {
             child: Column(
               children: [
                 GestureDetector(
-                        onTap: _pickImage,
-                        child: CircleAvatar(
-                          radius: 50,
-                          backgroundImage: _photoUrl != null
-                              ? FileImage(_photoUrl!)
-                              : (widget.officer?.photo != null
-                                  ? NetworkImage(widget.officer!.photo!)
-                                  : const AssetImage('images/avatar.png'))
-                                  as ImageProvider,
-                        ),
+                    onTap: () async {
+                    try {
+                      await Utils.selectPhoto((selectedPhotoUrl) {
+                        if (selectedPhotoUrl != null) {
+                          setState(() {
+                            _photoUrl = selectedPhotoUrl;
+                          });
+                        } else {
+                          showToast(message: 'Failed to select photo or file size exceeds limit of 1048487 ', err: true);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('file size exceeds limit')),
+                          );
+                        }
+                      });
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('An error occurred while selecting the photo')),
+                      );
+                    }
+                  },
+                  child: Container(
+                    width: 150.0, // Width of the container
+                    height: 150.0, // Height of the container
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white, // Border color
+                        width: 5.0, // Border width
                       ),
-                const SizedBox(
+                    ),
+                    child: CircleAvatar(
+                      radius: 75,
+                      backgroundImage: _photoUrl == null
+                          ? const AssetImage('images/avatar.png') as ImageProvider
+                          : NetworkImage(_photoUrl!) as ImageProvider,
+                      child: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
+                    ),
+                  ),
+                ),const SizedBox(
                   height: 15,
                 ),
                 TextFormField(
@@ -233,7 +253,10 @@ class _OfficerDialogState extends State<OfficerDialog> {
                 DropdownButtonFormField<String>(
                   value: _gender,
                   items: const [
-                    DropdownMenuItem(enabled: false,child: Text('Gender'),),
+                    DropdownMenuItem(
+                      enabled: false,
+                      child: Text('Gender'),
+                    ),
                     DropdownMenuItem(value: 'Male', child: Text('Male')),
                     DropdownMenuItem(value: 'Female', child: Text('Female')),
                   ],
@@ -243,7 +266,7 @@ class _OfficerDialogState extends State<OfficerDialog> {
                     });
                   },
                   decoration: const InputDecoration(labelText: 'Select Gender'),
-                  icon: Icon(Icons.person),
+                  icon: const Icon(Icons.person),
                 ),
                 TextFormField(
                   controller: _dobController,
@@ -260,86 +283,68 @@ class _OfficerDialogState extends State<OfficerDialog> {
                   readOnly: true,
                   onTap: () => _selectDate(context),
                 ),
-                const SizedBox(height: 10,),
-                _type == "update"?const SizedBox.shrink()
-                : CSCPicker(
-                  showStates: true,
-                  showCities: true,
-                  flagState: CountryFlag.DISABLE,
-
-                  dropdownDecoration: BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(10)),
-                      color: Colors.white,
-                      border:
-                      Border.all(color: Colors.grey.shade400, width: 2)),
-
-                  disabledDropdownDecoration: BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(10)),
-                      color: Colors.grey.shade300,
-                      border:
-                      Border.all(color: Colors.grey.shade300, width: 2)),
-
-                  ///placeholders for dropdown search field
-                  countrySearchPlaceholder: "Country/Nationality",
-                  stateSearchPlaceholder: "State of Origin",
-                  citySearchPlaceholder: "Local Government Area/City",
-
-                  ///labels for dropdown
-                  countryDropdownLabel: "Select Nationality",
-                  stateDropdownLabel: "*State of Origin/Residence",
-                  cityDropdownLabel: "*Local Govt Area/City",
-
-                  ///Default Country
-                  defaultCountry: CscCountry.Nigeria,
-
-                  ///Disable country dropdown (Note: use it with default country)
-                  //disableCountry: true,
-
-                  ///Country Filter [OPTIONAL PARAMETER]
-                  //countryFilter: [CscCountry.India,CscCountry.United_States,CscCountry.Canada],
-
-                  ///selected item style [OPTIONAL PARAMETER]
-                  selectedItemStyle: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 14,
-                  ),
-
-                  ///DropdownDialog Heading style [OPTIONAL PARAMETER]
-                  dropdownHeadingStyle: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold),
-
-                  ///DropdownDialog Item style [OPTIONAL PARAMETER]
-                  dropdownItemStyle: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 14,
-                  ),
-
-                  ///Dialog box radius [OPTIONAL PARAMETER]
-                  dropdownDialogRadius: 10.0,
-
-                  ///Search bar radius [OPTIONAL PARAMETER]
-                  searchBarRadius: 10.0,
-
-                  ///triggers once country selected in dropdown
-                  onCountryChanged: (country) {
-                    setState(() {
-                      _selectedCountry = country;
-                      _selectedState = null;
-                      _selectedLga = null;
-                    });
-                  },
-                  onStateChanged: (state) {
-                    setState(() {
-                      _selectedState = state;
-                      _selectedLga = null;
-                    });
-                  },
-                  onCityChanged: (lga) {
-                    setState(() {
-                      _selectedLga = lga;
-                    });
+                const SizedBox(height: 10),
+                _type == "update"
+                    ? const SizedBox.shrink()
+                    : CSCPicker(
+                        showStates: true,
+                        showCities: true,
+                        flagState: CountryFlag.DISABLE,
+                        dropdownDecoration: BoxDecoration(
+                          borderRadius: const BorderRadius.all(Radius.circular(10)),
+                          color: Colors.white,
+                          border: Border.all(color: Colors.grey.shade400, width: 2),
+                        ),
+                        disabledDropdownDecoration: BoxDecoration(
+                          borderRadius: const BorderRadius.all(Radius.circular(10)),
+                          color: Colors.grey.shade300,
+                          border: Border.all(color: Colors.grey.shade300, width: 2),
+                        ),
+                        countrySearchPlaceholder: "Country/Nationality",
+                        stateSearchPlaceholder: "State of Origin",
+                        citySearchPlaceholder: "Local Government Area/City",
+                        countryDropdownLabel: "Select Nationality",
+                        stateDropdownLabel: "*State of Origin/Residence",
+                        cityDropdownLabel: "*Local Govt. Area/City",
+                        selectedItemStyle: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 14,
+                        ),
+                        dropdownHeadingStyle: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold),
+                        dropdownItemStyle: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 14,
+                        ),
+                        dropdownDialogRadius: 10.0,
+                        searchBarRadius: 10.0,
+                        onCountryChanged: (value) {
+                          setState(() {
+                            _selectedCountry = value;
+                          });
+                        },
+                        onStateChanged: (value) {
+                          setState(() {
+                            _selectedState = value;
+                          });
+                        },
+                        onCityChanged: (value) {
+                          setState(() {
+                            _selectedLga = value;
+                          });
+                        },
+                      ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _rankController,
+                  decoration: const InputDecoration(labelText: 'Rank'),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter the rank';
+                    }
+                    return null;
                   },
                 ),
                 TextFormField(
@@ -362,37 +367,30 @@ class _OfficerDialogState extends State<OfficerDialog> {
                     return null;
                   },
                 ),
-                TextFormField(
-                  controller: _rankController,
-                  decoration: const InputDecoration(labelText: 'Rank'),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter the rank';
-                    }
-                    return null;
-                  },
-                ),
               ],
             ),
           ),
         ),
       ),
       actions: [
-        _type == 'update'
-            ? ElevatedButton.icon(
-                onPressed: _updateOfficer,
-                label: const Text('Update'),
-                icon: const Icon(Icons.update_sharp),
-              )
-            : ElevatedButton.icon(
-                onPressed: _saveOfficer,
-                label: const Text('Save'),
-                icon: const Icon(Icons.save_sharp),
-              ),
-        TextButton.icon(
+        if (_type == 'update')
+          TextButton(
+            onPressed: _deleteOfficer,
+            child: const Text('Delete'),
+          ),
+        TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          label: const Text('Cancel'),
-          icon: const Icon(Icons.cancel),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            if (_type == 'update') {
+              _updateOfficer();
+            } else {
+              _saveOfficer();
+            }
+          },
+          child: const Text('Save'),
         ),
       ],
     );

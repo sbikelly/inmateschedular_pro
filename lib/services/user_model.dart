@@ -187,21 +187,28 @@ class OfficerModel {
     this.rank,
   });
 
-  factory OfficerModel.fromMap(Map<String, dynamic> data, String documentId) {
-    return OfficerModel(
-      id: documentId,
-      officerID: data['officerID'] as String?,
-      name: data['name'] as String?,
-      email: data['email'] as String?,
-      phone: data['phone'] as String?,
-      photo: data['photo'] as String?,
-      dob: data['dob'] as String?,
-      nationality: data['nationality'] as String?,
-      state: data['state'] as String?,
-      lga: data['lga'] as String?,
-      gender: data['gender'] as String?,
-      rank: data['affiliations'] as String?,
-    );
+  static OfficerModel fromSnapshot(DocumentSnapshot<Map<String, dynamic>> snapshot) {
+    final data = snapshot.data()!;
+    try {
+      return OfficerModel(
+        id: data['id'] as String?,
+        officerID: data['officerID'] as String?,
+        name: data['name'] as String?,
+        email: data['email'] as String?,
+        phone: data['phone'] as String?,
+        photo: data['photo'] as String?,
+        dob: data['dob'] as String?,
+        nationality: data['nationality'] as String?,
+        state: data['state'] as String?,
+        lga: data['lga'] as String?,
+        gender: data['gender'] as String?,
+        rank: data['affiliations'] as String?,
+      );
+    } on Exception catch (e) {
+      print('Error parsing officer data from snapshot in OfficerModel === $e');
+      // Return a default user or handle error as needed
+      return OfficerModel();
+    }
   }
 
   Map<String, dynamic> toJson() {
